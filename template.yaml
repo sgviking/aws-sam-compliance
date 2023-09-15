@@ -1,0 +1,67 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  lacework-compliance - Builds lambda function to query the Lacework compliance 
+  statistics. All sub-accounts are enumerated and all CSP's under each is also
+  enumerated.  Lambda is triggered by an EventBridge rule scheduled as cron. 
+  The results are stored in DynamoDb.
+
+Globals:
+  Function:
+    Timeout: 900  # This is really high
+    MemorySize: 128
+
+Resources:
+  ComplianceS3:
+    Type: AWS::S3::Bucket
+
+  ComplianceSecrets:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      SecretString: '{"LW_ACCOUNT":"","LW_API_KEY": "", "LW_API_SECRET": ""}'
+
+  ComplianceSecretsPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    DependsOn: ComplianceSecrets
+    Properties:
+      ManagedPolicyName: lw-compliance-secrets
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: 
+              - secretsmanager:GetSecretValue
+              - secretsmanager:DescribeSecret
+            Resource: !GetAtt ComplianceSecrets.Id
+
+  ComplianceFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: ComplianceSecretsPolicy
+    Properties:
+      CodeUri: compliance/
+      Handler: app.lambda_handler
+      Runtime: python3.9
+      Architectures:
+        - x86_64
+      Policies:
+        - S3FullAccessPolicy:
+            BucketName: 
+              !Ref ComplianceS3
+        - !Ref ComplianceSecretsPolicy
+      Events:
+        Trigger:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 12 * * ? *)
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref ComplianceS3
+          SECRETS_ARN: !Ref ComplianceSecrets
+
+Outputs:
+  ComplianceFunction:
+    Description: "Lacework Compliance Lambda Function ARN"
+    Value: !GetAtt ComplianceFunction.Arn
+  ComplianceFunctionIamRole:
+    Description: "Implicit IAM Role created for compliance function"
+    Value: !GetAtt ComplianceFunctionRole.Arn
