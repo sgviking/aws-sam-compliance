@@ -1,8 +1,7 @@
 import json
 import boto3
-import uuid
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from compliance import get_access_token, get_lw_subaccounts, get_csp_accounts, summary, get_reports
 
 
@@ -10,13 +9,11 @@ def save_data(account, data, type=''):
     bucket = os.environ['BUCKET_NAME']
     filename = account + '-' + datetime.utcnow().isoformat() + f'{type}.json'
     s3 = boto3.client('s3')
-    response = s3.put_object(Bucket=bucket, Key=filename, Body=json.dumps(data))
-    response = s3.get_object(Bucket=bucket, Key=filename)
-    print(response)
-    
-
-def is_cached(account):
-    return False
+    try:
+        print('Saving {filename} to S3 bucket {bucket}')
+        s3.put_object(Bucket=bucket, Key=filename, Body=json.dumps(data))
+    except:
+        raise Exception(f'Failed to create {filename} object in {bucket}')
 
 
 def lambda_handler(event, context):
